@@ -1,0 +1,226 @@
+<!-- <!DOCTYPE html>
+<html>
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
+    <title>Live Audio Transcription</title>
+    <style>
+        #transcript {
+            height: 300px;
+            width: 100%;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Live Audio Transcription</h1>
+    <p id="status">Not Connected</p>
+    <button id="toggleButton">Start Live Transcript</button>
+    <div id="transcript"></div>
+
+    <script>
+        let mediaRecorder;
+        let socket;
+        let isRecording = false;
+        const toggleButton = document.getElementById('toggleButton');
+        const statusElement = document.getElementById('status');
+        const transcriptElement = document.getElementById('transcript');
+
+        toggleButton.addEventListener('click', toggleRecording);
+
+        function toggleRecording() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+
+        function startRecording() {
+            navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+                if (!MediaRecorder.isTypeSupported('audio/webm'))
+                    return alert('Browser not supported');
+                
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm',
+                });
+
+                socket = new WebSocket('ws://localhost:8080');
+
+                socket.onopen = () => {
+                    statusElement.textContent = 'Connected';
+                    console.log('WebSocket connected');
+                    
+                    mediaRecorder.addEventListener('dataavailable', async (event) => {
+    if (event.data.size > 0 && socket.readyState == 1) {
+        console.log("Sending audio chunk of size:", event.data.size);
+        console.log("data being sent: ",event.data)
+        socket.send(event.data);
+    }
+});
+
+                    mediaRecorder.start(1000);
+                    isRecording = true;
+                    toggleButton.textContent = 'Stop Live Transcript';
+                };
+
+                socket.onmessage = (message) => {
+                    const transcript = message.data;
+                    if (transcript) {
+                        console.log(transcript);
+                        transcriptElement.innerHTML += transcript + '<br>';
+                        transcriptElement.scrollTop = transcriptElement.scrollHeight;
+                    }
+                };
+
+                socket.onclose = () => {
+                    console.log('WebSocket closed');
+                    statusElement.textContent = 'Disconnected';
+                };
+
+                socket.onerror = (error) => {
+                    console.log('WebSocket error:', error);
+                    statusElement.textContent = 'Error';
+                };
+            });
+        }
+
+        function stopRecording() {
+            if (mediaRecorder) {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
+            if (socket) {
+                socket.close();
+            }
+            isRecording = false;
+            toggleButton.textContent = 'Start Live Transcript';
+            statusElement.textContent = 'Not Connected';
+        }
+    </script>
+</body>
+</html> -->
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
+    <title>Live Audio Transcription</title>
+    <style>
+        #transcript {
+            height: 300px;
+            width: 100%;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Live Audio Transcription</h1>
+    <p id="status">Not Connected</p>
+    <button id="toggleButton">Start Live Transcript</button>
+    <div id="transcript"></div>
+
+    <script>
+        let mediaRecorder;
+        let socket;
+        let isRecording = false;
+        const toggleButton = document.getElementById('toggleButton');
+        const statusElement = document.getElementById('status');
+        const transcriptElement = document.getElementById('transcript');
+        const audioQueue = [];
+        let isProcessing = false;
+
+        toggleButton.addEventListener('click', toggleRecording);
+
+        function toggleRecording() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+
+        function startRecording() {
+            navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+                if (!MediaRecorder.isTypeSupported('audio/webm'))
+                    return alert('Browser not supported');
+                
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm',
+                });
+
+                socket = new WebSocket('ws://localhost:8080');
+
+                socket.onopen = () => {
+                    statusElement.textContent = 'Connected';
+                    console.log('WebSocket connected');
+                    
+                    mediaRecorder.addEventListener('dataavailable', async (event) => {
+                        if (event.data.size > 0) {
+                            console.log("Adding audio chunk of size:", event.data.size);
+                            audioQueue.push(event.data);
+                            processQueue();
+                        }
+                    });
+
+                    mediaRecorder.start(5000);
+                    isRecording = true;
+                    toggleButton.textContent = 'Stop Live Transcript';
+                };
+
+                socket.onmessage = (message) => {
+                    const transcript = message.data;
+                    if (transcript) {
+                        console.log(transcript);
+                        transcriptElement.innerHTML += transcript + '<br>';
+                        transcriptElement.scrollTop = transcriptElement.scrollHeight;
+                    }
+                    isProcessing = false;
+                    processQueue();
+                };
+
+                socket.onclose = () => {
+                    console.log('WebSocket closed');
+                    statusElement.textContent = 'Disconnected';
+                };
+
+                socket.onerror = (error) => {
+                    console.log('WebSocket error:', error);
+                    statusElement.textContent = 'Error';
+                    isProcessing = false;
+                };
+            });
+        }
+
+        function stopRecording() {
+            if (mediaRecorder) {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
+            if (socket) {
+                socket.close();
+            }
+            isRecording = false;
+            toggleButton.textContent = 'Start Live Transcript';
+            statusElement.textContent = 'Not Connected';
+        }
+
+        function processQueue() {
+            if (!isProcessing && audioQueue.length > 0 && socket.readyState === WebSocket.OPEN) {
+                isProcessing = true;
+                const audioChunk = audioQueue.shift();
+                console.log("Sending audio chunk of size:", audioChunk.size);
+                socket.send(audioChunk);
+            }
+        }
+    </script>
+</body>
+</html>
+

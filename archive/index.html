@@ -1,0 +1,51 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload and Send Audio</title>
+</head>
+<body>
+    <h1>Upload Audio File</h1>
+    <input type="file" id="fileInput" accept=".wav">
+    <button onclick="sendAudio()">Send Audio</button>
+    <h2>Transcription:</h2>
+    <p id="transcription"></p>
+
+    <script>
+        function sendAudio() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select a file.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const audioContent = event.target.result;
+
+                const socket = new WebSocket('ws://localhost:8080');
+                socket.binaryType = 'arraybuffer';
+
+                socket.onopen = function() {
+                    socket.send(audioContent);
+                };
+
+                socket.onmessage = function(event) {
+                    const transcription = event.data;
+                    document.getElementById('transcription').innerText = transcription;
+                };
+
+                socket.onerror = function(error) {
+                    console.log('WebSocket error: ' + error);
+                };
+
+                socket.onclose = function() {
+                    console.log('WebSocket connection closed');
+                };
+            };
+            reader.readAsArrayBuffer(file);
+        }
+    </script>
+</body>
+</html>

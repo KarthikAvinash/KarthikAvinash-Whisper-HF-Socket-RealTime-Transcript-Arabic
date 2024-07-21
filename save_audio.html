@@ -1,0 +1,140 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Recorder</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        #transcript {
+            width: 80%;
+            height: 200px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: scroll;
+        }
+    </style>
+</head>
+<body>
+    <button id="toggleRecording">Start Recording</button>
+    <div id="transcript"></div>
+    <script>
+        const toggleRecordingButton = document.getElementById('toggleRecording');
+        const transcriptBox = document.getElementById('transcript');
+        let mediaRecorder;
+        let chunks = [];
+        let isRecording = false;
+        let interval;
+        const ws = new WebSocket('ws://localhost:8765');
+
+        // Queue to manage audio chunks
+        let queue = [];
+        let isSending = false;
+
+        ws.onopen = () => {
+            console.log('Connected to WebSocket server');
+        };
+
+        ws.onmessage = (event) => {
+            console.log('response received@@@', event.data);
+            if (event.data === "You can send next chunk") {
+                isSending = false;
+                // Process the next chunk in the queue if available
+                if (queue.length > 0) {
+                    sendNextChunk();
+                }
+            } else {
+                // Display the transcript
+                transcriptBox.innerHTML += event.data + '<br>';
+            }
+        };
+
+        ws.onclose = () => {
+            console.log('Disconnected from WebSocket server');
+        };
+
+        toggleRecordingButton.addEventListener('click', async () => {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                await startRecording();
+            }
+        });
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+
+                mediaRecorder.ondataavailable = event => {
+                    chunks.push(event.data);
+                    console.log('chunk created..');
+                };
+
+                mediaRecorder.onstop = () => {
+                    queue.push(new Blob(chunks, { type: 'audio/wav' }));
+                    chunks = [];
+                    console.log('chunk added to queue!!');
+                    // Start sending chunks
+                    if (!isSending) {
+                        sendNextChunk();
+                    }
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                toggleRecordingButton.textContent = 'Stop Recording';
+
+                interval = setInterval(() => {
+                    if (mediaRecorder.state === 'recording') {
+                        mediaRecorder.stop();
+                        mediaRecorder.start();
+                    }
+                }, 5000); // Record every 5 seconds
+
+            } catch (error) {
+                console.error('Error accessing media devices.', error);
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder) {
+                mediaRecorder.stop();
+                clearInterval(interval);
+            }
+            isRecording = false;
+            toggleRecordingButton.textContent = 'Start Recording';
+        }
+
+        function sendNextChunk() {
+            if (queue.length > 0) {
+                isSending = true;
+                const blob = queue.shift();
+                const reader = new FileReader();
+
+                reader.onload = () => {
+                    const arrayBuffer = reader.result;
+                    ws.send(arrayBuffer);
+                    console.log('chunk sent!');
+                };
+
+                reader.readAsArrayBuffer(blob);
+            }
+        }
+    </script>
+</body>
+</html>
