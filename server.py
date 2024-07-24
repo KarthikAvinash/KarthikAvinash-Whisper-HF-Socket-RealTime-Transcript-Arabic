@@ -208,8 +208,8 @@ async def save_audio(websocket, path):
         await websocket.send("An error occurred. Please try again.")
 
 async def main():
-    async with websockets.serve(save_audio, "0.0.0.0", 8765):
-        logging.info("WebSocket server started on ws://0.0.0.0:8765")
+    async with websockets.serve(save_audio, "localhost", 8765):
+        logging.info("WebSocket server started on ws://localhost:8765")
         await asyncio.Future()  # Run forever
 
 if __name__ == "__main__":
